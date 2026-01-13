@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Social Media - Resiliency Workshop</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        :root {
+            --region-color: <%= regionColor %>;
+        }
+        body {
+            background-color: #f8f9fa;
+            min-height: 100vh;
+        }
+        .region-banner {
+            background-color: var(--region-color);
+            color: white;
+            padding: 10px 0;
+            text-align: center;
+            font-weight: bold;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .region-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .region-dot {
+            width: 12px;
+            height: 12px;
+            background-color: #00ff00;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .card-post {
+            transition: transform 0.2s, box-shadow 0.2s;
+            border-left: 4px solid var(--region-color);
+        }
+        .card-post:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .post-region {
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            background-color: #e9ecef;
+        }
+        .post-region.sea {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .post-region.idc {
+            background-color: #cce5ff;
+            color: #004085;
+        }
+        .form-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .form-card .form-control {
+            border: none;
+        }
+        .btn-submit {
+            background-color: #28a745;
+            border: none;
+        }
+        .btn-submit:hover {
+            background-color: #218838;
+        }
+        .loading-spinner {
+            display: none;
+        }
+        .timestamp {
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+        .sync-indicator {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            display: none;
+        }
+        .sync-indicator.show {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .header-info {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .stats-box {
+            text-align: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .stats-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--region-color);
+        }
+        .btn-action {
+            padding: 2px 8px;
+            font-size: 0.75rem;
+        }
+        .updated-badge {
+            font-size: 0.7rem;
+            background-color: #ffc107;
+            color: #212529;
+            padding: 1px 6px;
+            border-radius: 4px;
+            margin-left: 5px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Region Banner -->
+    <div class="region-banner" id="regionBanner">
+        <div class="region-indicator">
+            <div class="region-dot"></div>
+            <span>Served from: <span id="currentRegion"><%= region %></span></span>
+            <span class="ms-3">|</span>
+            <span class="ms-3"><i class="bi bi-clock"></i> <span id="serverTime">-</span></span>
+        </div>
+    </div>
+
+    <div class="container py-4">
+        <!-- Header Info -->
+        <div class="header-info">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <h1><i class="bi bi-chat-dots-fill"></i> Social Feed</h1>
+                    <p class="text-muted mb-0">Azure Resiliency Workshop Demo</p>
+                </div>
+                <div class="col-md-6">
+                    <div class="row">
+                        <div class="col-6">
+                            <div class="stats-box">
+                                <div class="stats-number" id="postCount">0</div>
+                                <div class="text-muted">Total Posts</div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="stats-box">
+                                <div class="stats-number" id="lastSync">-</div>
+                                <div class="text-muted">Last Refresh</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Post Form -->
+            <div class="col-lg-4 mb-4">
+                <div class="card form-card">
+                    <div class="card-body">
+                        <h5 class="card-title"><i class="bi bi-pencil-square"></i> Create Post</h5>
+                        <form id="postForm">
+                            <div class="mb-3">
+                                <input type="text" class="form-control" id="username" 
+                                       placeholder="Your name" required maxlength="50">
+                            </div>
+                            <div class="mb-3">
+                                <textarea class="form-control" id="message" rows="3" 
+                                          placeholder="What's on your mind?" required maxlength="500"></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-submit text-white w-100">
+                                <span class="submit-text"><i class="bi bi-send"></i> Post</span>
+                                <span class="loading-spinner">
+                                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                                    Posting...
+                                </span>
+                            </button>
+                        </form>
+                        <hr class="my-3 opacity-50">
+                        <button class="btn btn-outline-light btn-sm w-100" id="refreshBtn">
+                            <i class="bi bi-arrow-clockwise"></i> Refresh Posts
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Info Card -->
+                <div class="card mt-3">
+                    <div class="card-body">
+                        <h6><i class="bi bi-info-circle"></i> Workshop Info</h6>
+                        <small class="text-muted">
+                            <p class="mb-1">• Posts are stored in <strong>Azure SQL Database</strong></p>
+                            <p class="mb-1">• Data syncs via Failover Groups automatically</p>
+                            <p class="mb-1">• <strong>Azure Front Door</strong> handles failover</p>
+                            <p class="mb-0">• Region badge shows where traffic is served</p>
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Posts Feed -->
+            <div class="col-lg-8">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0"><i class="bi bi-collection"></i> Recent Posts</h5>
+                    <button class="btn btn-outline-danger btn-sm" id="clearBtn" title="Clear all posts">
+                        <i class="bi bi-trash"></i> Clear All
+                    </button>
+                </div>
+                <div id="postsContainer">
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2 text-muted">Loading posts...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Post Modal -->
+    <div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editModalLabel"><i class="bi bi-pencil"></i> Edit Post</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="editPostId">
+                    <input type="hidden" id="editPostUserId">
+                    <div class="mb-3">
+                        <label class="form-label">Username</label>
+                        <input type="text" class="form-control" id="editUsername" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Message</label>
+                        <textarea class="form-control" id="editMessage" rows="3" required maxlength="500"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveEditBtn">
+                        <i class="bi bi-check-lg"></i> Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sync Indicator -->
+    <div class="sync-indicator" id="syncIndicator">
+        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+        <span>Syncing...</span>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const postsContainer = document.getElementById('postsContainer');
+        const postForm = document.getElementById('postForm');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const postCount = document.getElementById('postCount');
+        const lastSync = document.getElementById('lastSync');
+        const syncIndicator = document.getElementById('syncIndicator');
+        const serverTime = document.getElementById('serverTime');
+        const editModal = new bootstrap.Modal(document.getElementById('editModal'));
+
+        // Update server time
+        function updateServerTime() {
+            serverTime.textContent = new Date().toLocaleTimeString();
+        }
+        setInterval(updateServerTime, 1000);
+        updateServerTime();
+
+        // Fetch and display posts
+        async function loadPosts() {
+            try {
+                syncIndicator.classList.add('show');
+                const response = await fetch('/api/posts');
+                const posts = await response.json();
+                
+                postCount.textContent = posts.length;
+                lastSync.textContent = new Date().toLocaleTimeString();
+
+                if (posts.length === 0) {
+                    postsContainer.innerHTML = `
+                        <div class="text-center py-5">
+                            <i class="bi bi-inbox display-1 text-muted"></i>
+                            <p class="mt-3 text-muted">No posts yet. Be the first to post!</p>
+                        </div>
+                    `;
+                } else {
+                    postsContainer.innerHTML = posts.map(post => `
+                        <div class="card card-post mb-3" data-post-id="${post.id}" data-user-id="${post.userId}">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div class="flex-grow-1">
+                                        <h6 class="mb-1">
+                                            <i class="bi bi-person-circle"></i> ${escapeHtml(post.username)}
+                                            ${post.updatedAt ? '<span class="updated-badge"><i class="bi bi-pencil-fill"></i> edited</span>' : ''}
+                                        </h6>
+                                        <p class="mb-2">${escapeHtml(post.message)}</p>
+                                    </div>
+                                    <div class="d-flex flex-column align-items-end gap-1">
+                                        <span class="post-region ${getRegionClass(post.region)}">
+                                            <i class="bi bi-geo-alt"></i> ${escapeHtml(post.region)}
+                                        </span>
+                                        <div class="btn-group">
+                                            <button class="btn btn-outline-primary btn-action" onclick="openEditModal('${post.id}', '${post.userId}', '${escapeHtml(post.username)}', \`${escapeHtml(post.message).replace(/`/g, '\\`')}\`)" title="Edit">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-outline-danger btn-action" onclick="deletePost('${post.id}')" title="Delete">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="timestamp">
+                                    <i class="bi bi-clock"></i> ${formatDate(post.timestamp)}
+                                    ${post.updatedAt ? '<span class="ms-2 text-warning"><i class="bi bi-arrow-repeat"></i> ' + formatDate(post.updatedAt) + ' from ' + escapeHtml(post.updatedRegion || 'Unknown') + '</span>' : ''}
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error('Error loading posts:', error);
+                postsContainer.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle"></i> Failed to load posts. Please try again.
+                    </div>
+                `;
+            } finally {
+                syncIndicator.classList.remove('show');
+            }
+        }
+
+        // Open edit modal
+        function openEditModal(id, userId, username, message) {
+            document.getElementById('editPostId').value = id;
+            document.getElementById('editPostUserId').value = userId;
+            document.getElementById('editUsername').value = username;
+            document.getElementById('editMessage').value = message;
+            editModal.show();
+        }
+
+        // Save edit
+        document.getElementById('saveEditBtn').addEventListener('click', async () => {
+            const id = document.getElementById('editPostId').value;
+            const userId = document.getElementById('editPostUserId').value;
+            const message = document.getElementById('editMessage').value.trim();
+
+            if (!message) {
+                alert('Message cannot be empty');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/posts/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message, userId })
+                });
+
+                if (response.ok) {
+                    editModal.hide();
+                    await loadPosts();
+                } else {
+                    throw new Error('Failed to update post');
+                }
+            } catch (error) {
+                console.error('Error updating post:', error);
+                alert('Failed to update post. Please try again.');
+            }
+        });
+
+        // Delete single post
+        async function deletePost(id) {
+            if (!confirm('Are you sure you want to delete this post?')) return;
+
+            try {
+                const response = await fetch(`/api/posts/${id}`, { method: 'DELETE' });
+                if (response.ok) {
+                    await loadPosts();
+                } else {
+                    throw new Error('Failed to delete post');
+                }
+            } catch (error) {
+                console.error('Error deleting post:', error);
+                alert('Failed to delete post.');
+            }
+        }
+
+
+        // Submit new post
+        postForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value.trim();
+            const message = document.getElementById('message').value.trim();
+            
+            const submitBtn = postForm.querySelector('button[type="submit"]');
+            const submitText = submitBtn.querySelector('.submit-text');
+            const loadingSpinner = submitBtn.querySelector('.loading-spinner');
+            
+            submitBtn.disabled = true;
+            submitText.style.display = 'none';
+            loadingSpinner.style.display = 'inline-block';
+
+            try {
+                const response = await fetch('/api/posts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, message })
+                });
+
+                if (response.ok) {
+                    document.getElementById('message').value = '';
+                    await loadPosts();
+                } else {
+                    throw new Error('Failed to create post');
+                }
+            } catch (error) {
+                console.error('Error creating post:', error);
+                alert('Failed to create post. Please try again.');
+            } finally {
+                submitBtn.disabled = false;
+                submitText.style.display = 'inline-block';
+                loadingSpinner.style.display = 'none';
+            }
+        });
+
+        // Refresh button
+        refreshBtn.addEventListener('click', loadPosts);
+
+        // Clear all posts
+        clearBtn.addEventListener('click', async () => {
+            if (confirm('Are you sure you want to delete all posts?')) {
+                try {
+                    await fetch('/api/posts', { method: 'DELETE' });
+                    await loadPosts();
+                } catch (error) {
+                    console.error('Error clearing posts:', error);
+                    alert('Failed to clear posts.');
+                }
+            }
+        });
+
+        // Helper functions
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleString();
+        }
+
+        function getRegionClass(region) {
+            if (region.toLowerCase().includes('southeast asia')) return 'sea';
+            if (region.toLowerCase().includes('indonesia')) return 'idc';
+            return '';
+        }
+
+        // Auto-refresh every 10 seconds
+        setInterval(loadPosts, 10000);
+
+        // Initial load
+        loadPosts();
+    </script>
+</body>
+</html>
