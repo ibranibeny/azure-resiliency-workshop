@@ -105,7 +105,7 @@ $INDEX_EJS
 INDEXEJS
 
 # Create .env file
-cat > .env << 'ENVFILE'
+cat > .env << ENVFILE
 PORT=3000
 REGION=Southeast Asia
 REGION_COLOR=#28a745
@@ -171,7 +171,7 @@ $INDEX_EJS
 INDEXEJS
 
 # Create .env file
-cat > .env << 'ENVFILE'
+cat > .env << ENVFILE
 PORT=3000
 REGION=Indonesia Central
 REGION_COLOR=#007bff

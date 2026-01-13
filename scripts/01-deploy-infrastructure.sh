@@ -70,12 +70,12 @@ RT_SPOKE_SECONDARY="${PREFIX}-rt-spoke-idc"
 PRIVATE_DNS_ZONE="privatelink.database.windows.net"
 
 # Azure SQL Database
-SQL_SERVER_PRIMARY="${PREFIX}sql${UNIQUE_SUFFIX}sea"
-SQL_SERVER_SECONDARY="${PREFIX}sql${UNIQUE_SUFFIX}idc"
-SQL_FAILOVER_GROUP="${PREFIX}fg${UNIQUE_SUFFIX}"
-SQL_DATABASE="socialMediaDB"
+SQL_SERVER_PRIMARY="${PREFIX}-sql-sea-${UNIQUE_SUFFIX}"
+SQL_SERVER_SECONDARY="${PREFIX}-sql-idc-${UNIQUE_SUFFIX}"
+SQL_FAILOVER_GROUP="${PREFIX}-fog"
+SQL_DATABASE="resiliency-db"
 SQL_ADMIN_USER="sqladmin"
-SQL_ADMIN_PASSWORD="Workshop@$(date +%Y)!"  # Change this for production!
+SQL_ADMIN_PASSWORD="Workshop2024SecurePass"  # Simple password without special chars for shell compatibility
 
 # Virtual Machines
 VM_PRIMARY="${PREFIX}-vm-sea"
@@ -169,6 +169,16 @@ az network vnet create \
     --output none
 print_success "Created $VNET_HUB_PRIMARY"
 
+# Add AzureFirewallManagementSubnet for Basic SKU
+print_step "Adding AzureFirewallManagementSubnet in $PRIMARY_REGION..."
+az network vnet subnet create \
+    --resource-group "$RG_HUB_PRIMARY" \
+    --vnet-name "$VNET_HUB_PRIMARY" \
+    --name "AzureFirewallManagementSubnet" \
+    --address-prefix "10.0.2.0/26" \
+    --output none
+print_success "Created AzureFirewallManagementSubnet in $VNET_HUB_PRIMARY"
+
 # Secondary Hub VNet
 print_step "Creating Hub VNet in $SECONDARY_REGION..."
 az network vnet create \
@@ -179,6 +189,16 @@ az network vnet create \
     --subnet-prefix "10.10.1.0/26" \
     --output none
 print_success "Created $VNET_HUB_SECONDARY"
+
+# Add AzureFirewallManagementSubnet for Basic SKU
+print_step "Adding AzureFirewallManagementSubnet in $SECONDARY_REGION..."
+az network vnet subnet create \
+    --resource-group "$RG_HUB_SECONDARY" \
+    --vnet-name "$VNET_HUB_SECONDARY" \
+    --name "AzureFirewallManagementSubnet" \
+    --address-prefix "10.10.2.0/26" \
+    --output none
+print_success "Created AzureFirewallManagementSubnet in $VNET_HUB_SECONDARY"
 
 # Create Firewall Public IPs
 print_step "Creating Firewall Public IPs..."
@@ -198,6 +218,24 @@ az network public-ip create \
     --output none
 print_success "Created $FW_PIP_SECONDARY"
 
+# Create Management Public IPs for Basic SKU Firewall
+print_step "Creating Firewall Management Public IPs..."
+az network public-ip create \
+    --resource-group "$RG_HUB_PRIMARY" \
+    --name "${FW_PRIMARY}-mgmt-pip" \
+    --sku Standard \
+    --allocation-method Static \
+    --output none
+print_success "Created ${FW_PRIMARY}-mgmt-pip"
+
+az network public-ip create \
+    --resource-group "$RG_HUB_SECONDARY" \
+    --name "${FW_SECONDARY}-mgmt-pip" \
+    --sku Standard \
+    --allocation-method Static \
+    --output none
+print_success "Created ${FW_SECONDARY}-mgmt-pip"
+
 # Create Firewall Policies
 print_step "Creating Firewall Policies..."
 az network firewall policy create \
@@ -214,7 +252,7 @@ az network firewall policy create \
     --output none
 print_success "Created $FW_POLICY_SECONDARY"
 
-# Create Azure Firewalls (Basic SKU)
+# Create Azure Firewalls (Basic SKU - requires both data and management IP configurations)
 print_step "Creating Azure Firewall in $PRIMARY_REGION..."
 print_info "This may take 5-10 minutes..."
 az network firewall create \
@@ -224,7 +262,10 @@ az network firewall create \
     --tier Basic \
     --vnet-name "$VNET_HUB_PRIMARY" \
     --firewall-policy "$FW_POLICY_PRIMARY" \
+    --conf-name "data-ip-config" \
     --public-ip "$FW_PIP_PRIMARY" \
+    --m-conf-name "mgmt-ip-config" \
+    --m-public-ip "${FW_PRIMARY}-mgmt-pip" \
     --output none
 print_success "Created $FW_PRIMARY"
 
@@ -237,7 +278,10 @@ az network firewall create \
     --tier Basic \
     --vnet-name "$VNET_HUB_SECONDARY" \
     --firewall-policy "$FW_POLICY_SECONDARY" \
+    --conf-name "data-ip-config" \
     --public-ip "$FW_PIP_SECONDARY" \
+    --m-conf-name "mgmt-ip-config" \
+    --m-public-ip "${FW_SECONDARY}-mgmt-pip" \
     --output none
 print_success "Created $FW_SECONDARY"
 
@@ -559,41 +603,44 @@ print_success "NSGs associated with Spoke subnets"
 
 print_header "PHASE 7: Creating Azure SQL Database with Failover Groups"
 
-# Create Primary SQL Server (Southeast Asia)
+# Create Primary SQL Server (Southeast Asia) - in Spoke RG for Private Endpoint
 print_step "Creating Primary SQL Server: $SQL_SERVER_PRIMARY"
 print_info "This may take 2-3 minutes..."
 
 az sql server create \
     --name "$SQL_SERVER_PRIMARY" \
-    --resource-group "$RG_GLOBAL" \
+    --resource-group "$RG_SPOKE_PRIMARY" \
     --location "$PRIMARY_REGION" \
     --admin-user "$SQL_ADMIN_USER" \
     --admin-password "$SQL_ADMIN_PASSWORD" \
-    --enable-public-network false \
+    --enable-public-network true \
     --output none
 
 print_success "Created Primary SQL Server: $SQL_SERVER_PRIMARY"
 
-# Create Secondary SQL Server (Indonesia Central)
+# Create Secondary SQL Server (Indonesia Central) - in Spoke RG for Private Endpoint
 print_step "Creating Secondary SQL Server: $SQL_SERVER_SECONDARY"
 
 az sql server create \
     --name "$SQL_SERVER_SECONDARY" \
-    --resource-group "$RG_GLOBAL" \
+    --resource-group "$RG_SPOKE_SECONDARY" \
     --location "$SECONDARY_REGION" \
     --admin-user "$SQL_ADMIN_USER" \
     --admin-password "$SQL_ADMIN_PASSWORD" \
-    --enable-public-network false \
+    --enable-public-network true \
     --output none
 
 print_success "Created Secondary SQL Server: $SQL_SERVER_SECONDARY"
+
+# Note: SQL firewall rules are not needed when using Private Endpoints
+# Public network access will be disabled after Private Endpoints are created
 
 # Create Database on Primary Server
 print_step "Creating Database: $SQL_DATABASE"
 
 az sql db create \
     --name "$SQL_DATABASE" \
-    --resource-group "$RG_GLOBAL" \
+    --resource-group "$RG_SPOKE_PRIMARY" \
     --server "$SQL_SERVER_PRIMARY" \
     --edition "GeneralPurpose" \
     --family "Gen5" \
@@ -609,10 +656,10 @@ print_info "This may take 3-5 minutes..."
 
 az sql failover-group create \
     --name "$SQL_FAILOVER_GROUP" \
-    --resource-group "$RG_GLOBAL" \
+    --resource-group "$RG_SPOKE_PRIMARY" \
     --server "$SQL_SERVER_PRIMARY" \
     --partner-server "$SQL_SERVER_SECONDARY" \
-    --partner-resource-group "$RG_GLOBAL" \
+    --partner-resource-group "$RG_SPOKE_SECONDARY" \
     --add-db "$SQL_DATABASE" \
     --failover-policy Automatic \
     --grace-period 60 \
@@ -660,61 +707,127 @@ print_success "Private DNS Zone linked to both Spoke VNets"
 # PHASE 7.2: Private Endpoints for Azure SQL
 # =============================================================================
 
-print_step "Creating Private Endpoint for Primary SQL Server (SEA)..."
-SQL_SERVER_PRIMARY_ID=$(az sql server show --name "$SQL_SERVER_PRIMARY" --resource-group "$RG_GLOBAL" --query id -o tsv)
+print_header "PHASE 7.2: Creating Private Endpoints for Azure SQL"
 
+# Get SQL Server IDs
+SQL_SERVER_PRIMARY_ID=$(az sql server show --name "$SQL_SERVER_PRIMARY" --resource-group "$RG_SPOKE_PRIMARY" --query id -o tsv)
+SQL_SERVER_SECONDARY_ID=$(az sql server show --name "$SQL_SERVER_SECONDARY" --resource-group "$RG_SPOKE_SECONDARY" --query id -o tsv)
+
+# Create Private Endpoint for Primary SQL Server
+print_step "Creating Private Endpoint for Primary SQL Server..."
 az network private-endpoint create \
-    --resource-group "$RG_SPOKE_PRIMARY" \
     --name "pe-sql-sea" \
+    --resource-group "$RG_SPOKE_PRIMARY" \
     --vnet-name "$VNET_SPOKE_PRIMARY" \
     --subnet "$SUBNET_PE_PRIMARY" \
     --private-connection-resource-id "$SQL_SERVER_PRIMARY_ID" \
     --group-id "sqlServer" \
-    --connection-name "sql-connection-sea" \
+    --connection-name "pe-sql-sea-connection" \
     --output none
 
-print_success "Created Private Endpoint for Primary SQL in Southeast Asia"
+print_success "Created Private Endpoint: pe-sql-sea"
 
-print_step "Creating Private Endpoint for Secondary SQL Server (IDC)..."
-SQL_SERVER_SECONDARY_ID=$(az sql server show --name "$SQL_SERVER_SECONDARY" --resource-group "$RG_GLOBAL" --query id -o tsv)
-
+# Create Private Endpoint for Secondary SQL Server
+print_step "Creating Private Endpoint for Secondary SQL Server..."
 az network private-endpoint create \
-    --resource-group "$RG_SPOKE_SECONDARY" \
     --name "pe-sql-idc" \
+    --resource-group "$RG_SPOKE_SECONDARY" \
     --vnet-name "$VNET_SPOKE_SECONDARY" \
     --subnet "$SUBNET_PE_SECONDARY" \
     --private-connection-resource-id "$SQL_SERVER_SECONDARY_ID" \
     --group-id "sqlServer" \
-    --connection-name "sql-connection-idc" \
+    --connection-name "pe-sql-idc-connection" \
     --output none
 
-print_success "Created Private Endpoint for Secondary SQL in Indonesia Central"
+print_success "Created Private Endpoint: pe-sql-idc"
 
-# Configure Private DNS Zone Group for automatic DNS registration
-print_step "Configuring DNS Zone Groups for Private Endpoints..."
-SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-
-az network private-endpoint dns-zone-group create \
+# Get Private IP addresses from Private Endpoints
+PE_IP_PRIMARY=$(az network private-endpoint show \
+    --name "pe-sql-sea" \
     --resource-group "$RG_SPOKE_PRIMARY" \
-    --endpoint-name "pe-sql-sea" \
-    --name "sql-dns-zone-group" \
-    --private-dns-zone "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RG_GLOBAL/providers/Microsoft.Network/privateDnsZones/$PRIVATE_DNS_ZONE" \
-    --zone-name "sql" \
-    --output none
+    --query "customDnsConfigs[0].ipAddresses[0]" -o tsv)
 
-az network private-endpoint dns-zone-group create \
+PE_IP_SECONDARY=$(az network private-endpoint show \
+    --name "pe-sql-idc" \
     --resource-group "$RG_SPOKE_SECONDARY" \
-    --endpoint-name "pe-sql-idc" \
-    --name "sql-dns-zone-group" \
-    --private-dns-zone "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RG_GLOBAL/providers/Microsoft.Network/privateDnsZones/$PRIVATE_DNS_ZONE" \
-    --zone-name "sql" \
+    --query "customDnsConfigs[0].ipAddresses[0]" -o tsv)
+
+print_info "Private Endpoint IP (SEA): $PE_IP_PRIMARY"
+print_info "Private Endpoint IP (IDC): $PE_IP_SECONDARY"
+
+# Create DNS A records in Private DNS Zone
+print_step "Creating DNS A records in Private DNS Zone..."
+
+# Primary SQL Server DNS record
+az network private-dns record-set a create \
+    --name "$SQL_SERVER_PRIMARY" \
+    --zone-name "$PRIVATE_DNS_ZONE" \
+    --resource-group "$RG_GLOBAL" \
+    --output none 2>/dev/null || true
+
+az network private-dns record-set a add-record \
+    --record-set-name "$SQL_SERVER_PRIMARY" \
+    --zone-name "$PRIVATE_DNS_ZONE" \
+    --resource-group "$RG_GLOBAL" \
+    --ipv4-address "$PE_IP_PRIMARY" \
     --output none
 
-print_success "DNS Zone Groups configured"
+print_success "Created DNS record: $SQL_SERVER_PRIMARY -> $PE_IP_PRIMARY"
 
+# Secondary SQL Server DNS record
+az network private-dns record-set a create \
+    --name "$SQL_SERVER_SECONDARY" \
+    --zone-name "$PRIVATE_DNS_ZONE" \
+    --resource-group "$RG_GLOBAL" \
+    --output none 2>/dev/null || true
+
+az network private-dns record-set a add-record \
+    --record-set-name "$SQL_SERVER_SECONDARY" \
+    --zone-name "$PRIVATE_DNS_ZONE" \
+    --resource-group "$RG_GLOBAL" \
+    --ipv4-address "$PE_IP_SECONDARY" \
+    --output none
+
+print_success "Created DNS record: $SQL_SERVER_SECONDARY -> $PE_IP_SECONDARY"
+
+# Failover Group listener DNS record (points to primary)
+az network private-dns record-set a create \
+    --name "$SQL_FAILOVER_GROUP" \
+    --zone-name "$PRIVATE_DNS_ZONE" \
+    --resource-group "$RG_GLOBAL" \
+    --output none 2>/dev/null || true
+
+az network private-dns record-set a add-record \
+    --record-set-name "$SQL_FAILOVER_GROUP" \
+    --zone-name "$PRIVATE_DNS_ZONE" \
+    --resource-group "$RG_GLOBAL" \
+    --ipv4-address "$PE_IP_PRIMARY" \
+    --output none
+
+print_success "Created DNS record: $SQL_FAILOVER_GROUP -> $PE_IP_PRIMARY"
+
+# Disable public network access on SQL servers
+print_step "Disabling public network access on SQL servers..."
+az sql server update \
+    --name "$SQL_SERVER_PRIMARY" \
+    --resource-group "$RG_SPOKE_PRIMARY" \
+    --enable-public-network false \
+    --output none
+
+az sql server update \
+    --name "$SQL_SERVER_SECONDARY" \
+    --resource-group "$RG_SPOKE_SECONDARY" \
+    --enable-public-network false \
+    --output none
+
+print_success "Disabled public network access on SQL servers"
+
+print_success "SQL setup complete with Private Endpoints"
 print_info "SQL Failover Group Listener: $SQL_LISTENER"
 print_info "SQL Admin User: $SQL_ADMIN_USER"
 print_info "SQL Admin Password: $SQL_ADMIN_PASSWORD"
+print_info "Private Endpoint IP (SEA): $PE_IP_PRIMARY"
+print_info "Private Endpoint IP (IDC): $PE_IP_SECONDARY"
 
 # =============================================================================
 # PHASE 8: Virtual Machines (No Public IP - Access via Firewall DNAT)
@@ -941,6 +1054,7 @@ az network firewall policy rule-collection-group create \
     --priority 200 \
     --output none
 
+# Allow all outbound traffic (for internet access during npm install, etc.)
 az network firewall policy rule-collection-group collection add-filter-collection \
     --name "allow-outbound" \
     --policy-name "$FW_POLICY_PRIMARY" \
@@ -955,6 +1069,38 @@ az network firewall policy rule-collection-group collection add-filter-collectio
     --destination-ports "*" \
     --ip-protocols Any \
     --output none
+
+# Add specific SQL outbound rules (port 1433 + redirect ports 11000-11999)
+print_step "Adding SQL outbound rules for Azure SQL connectivity..."
+az network firewall policy rule-collection-group collection add-filter-collection \
+    --name "allow-sql-outbound" \
+    --policy-name "$FW_POLICY_PRIMARY" \
+    --resource-group "$RG_HUB_PRIMARY" \
+    --rule-collection-group-name "network-rules" \
+    --collection-priority 110 \
+    --action Allow \
+    --rule-name "allow-sql-1433" \
+    --rule-type NetworkRule \
+    --source-addresses "10.1.0.0/16" \
+    --destination-addresses "Sql" \
+    --destination-ports "1433" \
+    --ip-protocols TCP \
+    --output none
+
+az network firewall policy rule-collection-group collection rule add \
+    --name "allow-sql-redirect" \
+    --policy-name "$FW_POLICY_PRIMARY" \
+    --resource-group "$RG_HUB_PRIMARY" \
+    --rule-collection-group-name "network-rules" \
+    --collection-name "allow-sql-outbound" \
+    --rule-type NetworkRule \
+    --source-addresses "10.1.0.0/16" \
+    --destination-addresses "Sql" \
+    --destination-ports "11000-11999" \
+    --ip-protocols TCP \
+    --output none
+
+print_success "Added SQL outbound rules for SEA firewall"
 
 az network firewall policy rule-collection-group create \
     --name "network-rules" \
@@ -978,6 +1124,36 @@ az network firewall policy rule-collection-group collection add-filter-collectio
     --ip-protocols Any \
     --output none
 
+# Add SQL outbound rules for IDC firewall
+az network firewall policy rule-collection-group collection add-filter-collection \
+    --name "allow-sql-outbound" \
+    --policy-name "$FW_POLICY_SECONDARY" \
+    --resource-group "$RG_HUB_SECONDARY" \
+    --rule-collection-group-name "network-rules" \
+    --collection-priority 110 \
+    --action Allow \
+    --rule-name "allow-sql-1433" \
+    --rule-type NetworkRule \
+    --source-addresses "10.2.0.0/16" \
+    --destination-addresses "Sql" \
+    --destination-ports "1433" \
+    --ip-protocols TCP \
+    --output none
+
+az network firewall policy rule-collection-group collection rule add \
+    --name "allow-sql-redirect" \
+    --policy-name "$FW_POLICY_SECONDARY" \
+    --resource-group "$RG_HUB_SECONDARY" \
+    --rule-collection-group-name "network-rules" \
+    --collection-name "allow-sql-outbound" \
+    --rule-type NetworkRule \
+    --source-addresses "10.2.0.0/16" \
+    --destination-addresses "Sql" \
+    --destination-ports "11000-11999" \
+    --ip-protocols TCP \
+    --output none
+
+print_success "Added SQL outbound rules for IDC firewall"
 print_success "Added network rules for outbound traffic"
 
 # =============================================================================
@@ -1119,12 +1295,9 @@ echo "  - Failover Group: $SQL_FAILOVER_GROUP"
 echo "  - Listener Endpoint: $SQL_LISTENER"
 echo "  - Database: $SQL_DATABASE"
 echo "  - Admin User: $SQL_ADMIN_USER"
-echo "  - 🔒 Public Access: DISABLED"
-echo ""
-echo "Private Endpoints:"
-echo "  - Southeast Asia: pe-sql-sea"
-echo "  - Indonesia Central: pe-sql-idc"
-echo "  - Private DNS Zone: $PRIVATE_DNS_ZONE"
+echo "  - 🔒 Public Access: DISABLED (using Private Endpoints)"
+echo "  - Private Endpoint IP (SEA): $PE_IP_PRIMARY"
+echo "  - Private Endpoint IP (IDC): $PE_IP_SECONDARY"
 echo ""
 echo "Virtual Machines (Private IPs only - access via Firewall DNAT):"
 echo "  - Primary (SEA): $VM_PRIMARY (Private: $VM_PRIMARY_PRIVATE_IP)"
@@ -1173,11 +1346,9 @@ SQL_LISTENER=$SQL_LISTENER
 SQL_DATABASE=$SQL_DATABASE
 SQL_ADMIN_USER=$SQL_ADMIN_USER
 SQL_ADMIN_PASSWORD=$SQL_ADMIN_PASSWORD
-
-## Private Endpoints
-PE_PRIMARY=pe-sql-sea
-PE_SECONDARY=pe-sql-idc
-PRIVATE_DNS_ZONE=$PRIVATE_DNS_ZONE
+SQL_ACCESS_MODE=Private Endpoints (public access disabled)
+PE_IP_PRIMARY=$PE_IP_PRIMARY
+PE_IP_SECONDARY=$PE_IP_SECONDARY
 
 ## Virtual Machines (Private IPs - No Public Access)
 VM_PRIMARY=$VM_PRIMARY
