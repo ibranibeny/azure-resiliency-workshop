@@ -15,11 +15,26 @@ This workshop provides a practical demonstration of building resilient, multi-re
 
 ### Business Context
 
-A social media company needs to deploy their application across multiple regions to:
+A social media company called **"ConnectSEA"** is launching a new platform that allows users to:
+- **Share posts and updates** with friends and followers
+- **Upload and view photos** in a social feed
+- **Like and comment** on posts in real-time
+- **Follow other users** and build their social network
+
+The platform needs to be deployed across multiple regions to:
 - Ensure 99.99% uptime for their users in Southeast Asia
 - Protect against regional Azure outages
 - Meet compliance requirements for data residency
 - Provide low-latency access for users in different geographic locations
+
+### The Application
+
+The ConnectSEA social media application features:
+- **Node.js/Express.js** backend with EJS templating
+- **Azure SQL Database** for storing user posts and interactions
+- **Real-time feed** displaying the latest posts from all users
+- **Health monitoring** endpoint for load balancer probes
+- **Region-aware** responses showing which datacenter is serving the request
 
 ### Technical Challenge
 
