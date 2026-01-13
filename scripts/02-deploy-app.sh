@@ -129,10 +129,15 @@ sudo -u azureuser bash -c 'cd /var/www/social-media && pm2 delete all 2>/dev/nul
 sudo -u azureuser bash -c 'cd /var/www/social-media && pm2 start app.js --name social-media'
 sudo -u azureuser bash -c 'pm2 save'
 
+# Configure PM2 to start on boot
+env PATH=\$PATH:/usr/bin pm2 startup systemd -u azureuser --hp /home/azureuser
+sudo -u azureuser pm2 save
+
 # Restart Nginx
 systemctl restart nginx
 
 echo 'Application deployed successfully!'
+echo 'PM2 configured to auto-start on boot!'
 " \
     --output table
 
@@ -195,10 +200,15 @@ sudo -u azureuser bash -c 'cd /var/www/social-media && pm2 delete all 2>/dev/nul
 sudo -u azureuser bash -c 'cd /var/www/social-media && pm2 start app.js --name social-media'
 sudo -u azureuser bash -c 'pm2 save'
 
+# Configure PM2 to start on boot
+env PATH=\$PATH:/usr/bin pm2 startup systemd -u azureuser --hp /home/azureuser
+sudo -u azureuser pm2 save
+
 # Restart Nginx
 systemctl restart nginx
 
 echo 'Application deployed successfully!'
+echo 'PM2 configured to auto-start on boot!'
 " \
     --output table
 
