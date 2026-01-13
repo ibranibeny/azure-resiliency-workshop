@@ -292,6 +292,214 @@ SQL_TRUST_SERVER_CERTIFICATE=false
 
 ---
 
+## 📘 Understanding Azure SQL Database Architecture
+
+### Concept 1: SQL Database Sync Between On-Prem (SEA) and Cloud (IDC)
+
+In this workshop, we simulate **On-Prem (Southeast Asia)** and **Cloud (Indonesia Central)**. Azure SQL uses **Failover Groups** to synchronize data:
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                    HOW DATA SYNCHRONIZATION WORKS                        │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌─────────────────────┐          ┌─────────────────────┐               │
+│  │  PRIMARY SQL SERVER │          │ SECONDARY SQL SERVER│               │
+│  │  (Southeast Asia)   │ ──────►  │ (Indonesia Central) │               │
+│  │  - Read/Write       │ Async    │  - Read Only        │               │
+│  │  - All writes here  │ Geo-Rep  │  - Auto-synced      │               │
+│  └─────────────────────┘          └─────────────────────┘               │
+│                                                                          │
+│  SYNC MECHANISM: Azure SQL Failover Groups                               │
+│  ─────────────────────────────────────────────                           │
+│  • Asynchronous geo-replication (RPO < 5 seconds)                        │
+│  • Data automatically replicated to secondary                            │
+│  • No application code changes required                                  │
+│  • Transaction log shipped continuously                                  │
+│                                                                          │
+│  WORKFLOW:                                                               │
+│  1. App writes to PRIMARY (SEA) via Failover Group listener              │
+│  2. SQL commits transaction on PRIMARY                                   │
+│  3. Transaction log shipped to SECONDARY (IDC) asynchronously            │
+│  4. SECONDARY replays transaction log (~1-5 seconds delay)               │
+│  5. Data now available in both regions                                   │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Configuration in Script:**
+```bash
+# Create Failover Group for automatic sync
+az sql failover-group create \
+    --name "$SQL_FAILOVER_GROUP" \
+    --server "$SQL_SERVER_PRIMARY" \              # SEA (On-Prem simulation)
+    --partner-server "$SQL_SERVER_SECONDARY" \    # IDC (Cloud)
+    --add-db "$SQL_DATABASE" \
+    --failover-policy Automatic \                 # Auto-failover enabled
+    --grace-period 60                             # Wait 60 min before auto-failover
+```
+
+---
+
+### Concept 2: How Application Points to SQL During Failover
+
+The **Failover Group Listener Endpoint** provides a **single connection string** that automatically redirects to the current primary:
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│              FAILOVER GROUP LISTENER ENDPOINT                            │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  CONNECTION STRING (Never changes!):                                     │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │  Server: fg-resiliency-workshop.database.windows.net               │ │
+│  │  (This is the LISTENER endpoint - not individual server names)    │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                                                          │
+│  NORMAL OPERATION:                                                       │
+│  ─────────────────                                                       │
+│  App ──► fg-xxx.database.windows.net ──► sql-sea.database.windows.net   │
+│                    (Listener)                  (Primary)                 │
+│                                                                          │
+│  DURING/AFTER FAILOVER:                                                  │
+│  ──────────────────────                                                  │
+│  App ──► fg-xxx.database.windows.net ──► sql-idc.database.windows.net   │
+│                    (Listener)                  (New Primary)             │
+│                                                                          │
+│  ✅ APP CODE NEVER CHANGES!                                              │
+│  ✅ APP ALWAYS USES SAME CONNECTION STRING                               │
+│  ✅ AZURE HANDLES REDIRECTION AUTOMATICALLY                              │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**App Configuration (.env):**
+```bash
+# CORRECT: Use Failover Group Listener (auto-redirects during failover)
+SQL_SERVER=fg-resiliency-workshop.database.windows.net
+
+# WRONG: Don't use individual server names (won't failover automatically)
+# SQL_SERVER=sql-resiliency-sea.database.windows.net   ❌ Don't do this!
+```
+
+**Failover Types:**
+
+| Type | Trigger | Behavior |
+|------|---------|----------|
+| **Automatic** | SQL Server outage detected | Waits grace period (60 min), then fails over |
+| **Manual (Planned)** | Admin initiated | Immediate, no data loss, for maintenance |
+| **Manual (Forced)** | Admin initiated | Immediate, possible data loss, for disasters |
+
+**Manual Failover Command:**
+```bash
+# Force failover to secondary (Indonesia Central becomes new primary)
+az sql failover-group set-primary \
+    --name "$SQL_FAILOVER_GROUP" \
+    --resource-group "$RG_GLOBAL" \
+    --server "$SQL_SERVER_SECONDARY"
+```
+
+---
+
+### Concept 3: Azure SQL as PaaS - VNet Integration via Private Endpoints
+
+Azure SQL Database is a **Platform-as-a-Service (PaaS)** - it runs on Microsoft-managed infrastructure, NOT inside your VNet. You secure access using **Private Endpoints**:
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│            AZURE SQL (PaaS) + PRIVATE ENDPOINT ARCHITECTURE              │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │                    AZURE SQL DATABASE (PaaS)                       │ │
+│  │  ┌─────────────────────┐      ┌─────────────────────┐             │ │
+│  │  │ SQL Server SEA      │      │ SQL Server IDC      │             │ │
+│  │  │ (Microsoft Managed) │◄────►│ (Microsoft Managed) │             │ │
+│  │  │ Public Access: OFF  │      │ Public Access: OFF  │             │ │
+│  │  └──────────┬──────────┘      └──────────┬──────────┘             │ │
+│  │             │                            │                         │ │
+│  │             │    Failover Group Sync     │                         │ │
+│  └─────────────┼────────────────────────────┼─────────────────────────┘ │
+│                │                            │                           │
+│    ┌───────────▼───────────┐    ┌───────────▼───────────┐              │
+│    │   PRIVATE ENDPOINT    │    │   PRIVATE ENDPOINT    │              │
+│    │   pe-sql-sea          │    │   pe-sql-idc          │              │
+│    │   IP: 10.1.2.4        │    │   IP: 10.2.2.4        │              │
+│    └───────────┬───────────┘    └───────────┬───────────┘              │
+│                │                            │                           │
+│    ┌───────────▼───────────┐    ┌───────────▼───────────┐              │
+│    │   YOUR VNET (SEA)     │    │   YOUR VNET (IDC)     │              │
+│    │   Spoke: 10.1.0.0/16  │    │   Spoke: 10.2.0.0/16  │              │
+│    │                       │    │                       │              │
+│    │   VM (10.1.1.4) ──────┼────┼───► VM (10.2.1.4)     │              │
+│    │        │              │    │         │             │              │
+│    │        ▼              │    │         ▼             │              │
+│    │   Connects via        │    │   Connects via        │              │
+│    │   Private DNS Zone    │    │   Private DNS Zone    │              │
+│    └───────────────────────┘    └───────────────────────┘              │
+│                                                                          │
+│   PRIVATE DNS ZONE: privatelink.database.windows.net                     │
+│   ─────────────────────────────────────────────────                      │
+│   sql-resiliency-sea.database.windows.net → 10.1.2.4 (Private IP)       │
+│   sql-resiliency-idc.database.windows.net → 10.2.2.4 (Private IP)       │
+│   fg-resiliency-workshop.database.windows.net → (Listener endpoint)     │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Why Private Endpoints?**
+
+| Without Private Endpoint | With Private Endpoint |
+|-------------------------|----------------------|
+| Traffic goes over public internet | Traffic stays in Azure backbone |
+| SQL has public IP exposed | SQL has NO public IP |
+| Need firewall IP rules | Access only from your VNet |
+| Less secure | Enterprise-grade security |
+
+**Key Configuration in Script:**
+```bash
+# 1. Create SQL Server with public access DISABLED
+az sql server create \
+    --name "$SQL_SERVER_PRIMARY" \
+    --enable-public-network false    # ← No public IP!
+
+# 2. Create Private Endpoint in your VNet's PE Subnet
+az network private-endpoint create \
+    --name "pe-sql-sea" \
+    --vnet-name "$VNET_SPOKE_PRIMARY" \
+    --subnet "$SUBNET_PE_PRIMARY" \           # PE Subnet: 10.1.2.0/24
+    --private-connection-resource-id "$SQL_SERVER_PRIMARY_ID" \
+    --group-id "sqlServer"
+
+# 3. Create Private DNS Zone for name resolution
+az network private-dns zone create \
+    --name "privatelink.database.windows.net"
+
+# 4. Link DNS Zone to your VNets
+az network private-dns link vnet create \
+    --zone-name "privatelink.database.windows.net" \
+    --virtual-network "$SPOKE_VNet_ID"
+
+# 5. Register Private Endpoint IP in DNS Zone (automatic via DNS Zone Group)
+az network private-endpoint dns-zone-group create \
+    --endpoint-name "pe-sql-sea" \
+    --name "sql-dns-zone-group" \
+    --private-dns-zone "$PRIVATE_DNS_ZONE_ID"
+```
+
+**Summary - PaaS vs IaaS:**
+
+| Aspect | Azure SQL (PaaS) | SQL on VM (IaaS) |
+|--------|-----------------|------------------|
+| **Location** | Microsoft managed infrastructure | Inside your VNet |
+| **Management** | Automatic patching, backups | You manage everything |
+| **VNet Integration** | Via Private Endpoints | Direct (VM has NIC in VNet) |
+| **Scaling** | Instant, no downtime | Manual, requires VM resize |
+| **Geo-Replication** | Built-in Failover Groups | Manual Always On setup |
+| **Cost** | Pay per DTU/vCore | Pay for VM + storage + license |
+
+---
+
 ## Phase 3: Frontend VM Setup
 
 ### Task 3.1: Create VM in Southeast Asia
