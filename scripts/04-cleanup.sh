@@ -16,11 +16,11 @@ if [ -f "deployment-output.txt" ]; then
 else
     echo "❌ Error: deployment-output.txt not found!"
     echo "Will attempt to delete default resource groups..."
-    RG_HUB_PRIMARY="resiliency-hub-sea"
-    RG_SPOKE_PRIMARY="resiliency-spoke-sea"
-    RG_HUB_SECONDARY="resiliency-hub-idc"
-    RG_SPOKE_SECONDARY="resiliency-spoke-idc"
-    RG_GLOBAL="resiliency-global"
+    RG_HUB_PRIMARY="resiliency-rg-hub-sea"
+    RG_SPOKE_PRIMARY="resiliency-rg-spoke-sea"
+    RG_HUB_SECONDARY="resiliency-rg-hub-idc"
+    RG_SPOKE_SECONDARY="resiliency-rg-spoke-idc"
+    RG_GLOBAL="resiliency-rg-global"
 fi
 
 echo ""
