@@ -63,8 +63,8 @@ FW_POLICY_PRIMARY="${PREFIX}-fw-policy-sea"
 FW_POLICY_SECONDARY="${PREFIX}-fw-policy-idc"
 
 # Route Tables
-RT_PRIMARY="${PREFIX}-rt-sea"
-RT_SECONDARY="${PREFIX}-rt-idc"
+RT_SPOKE_PRIMARY="${PREFIX}-rt-spoke-sea"
+RT_SPOKE_SECONDARY="${PREFIX}-rt-spoke-idc"
 
 # Private DNS
 PRIVATE_DNS_ZONE="privatelink.database.windows.net"
