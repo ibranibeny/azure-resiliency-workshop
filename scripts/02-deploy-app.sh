@@ -80,6 +80,17 @@ print_header "Deploying to Primary VM (Southeast Asia)"
 print_step "Deploying application via Azure CLI run-command..."
 print_info "This uses Azure fabric to execute commands on VMs without public IP"
 
+# Step 1: Ensure Node.js and nginx are installed
+print_info "Ensuring Node.js 18 and nginx are installed..."
+az vm run-command invoke \
+    --resource-group "$RG_SPOKE_PRIMARY" \
+    --name "$VM_PRIMARY" \
+    --command-id RunShellScript \
+    --scripts 'curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && apt-get install -y nodejs nginx && node -v && npm -v' \
+    --query "value[0].message" -o tsv
+
+# Step 2: Deploy application files
+print_info "Deploying application files..."
 az vm run-command invoke \
     --resource-group "$RG_SPOKE_PRIMARY" \
     --name "$VM_PRIMARY" \
@@ -105,6 +116,7 @@ $INDEX_EJS
 INDEXEJS
 
 # Create .env file
+# NOTE: SEA VM connects to Failover Group Listener (primary) via its local Private Endpoint
 cat > .env << ENVFILE
 PORT=3000
 REGION=Southeast Asia
@@ -119,27 +131,28 @@ ENVFILE
 
 # Set permissions
 chown -R azureuser:azureuser /var/www/social-media
-
-# Install dependencies
-cd /var/www/social-media
-npm install
-
-# Start with PM2
-sudo -u azureuser bash -c 'cd /var/www/social-media && pm2 delete all 2>/dev/null || true'
-sudo -u azureuser bash -c 'cd /var/www/social-media && pm2 start app.js --name social-media'
-sudo -u azureuser bash -c 'pm2 save'
-
-# Configure PM2 to start on boot
-env PATH=\$PATH:/usr/bin pm2 startup systemd -u azureuser --hp /home/azureuser
-sudo -u azureuser pm2 save
-
-# Restart Nginx
-systemctl restart nginx
-
-echo 'Application deployed successfully!'
-echo 'PM2 configured to auto-start on boot!'
+echo 'Application files deployed!'
 " \
-    --output table
+    --query "value[0].message" -o tsv
+
+# Step 3: Install npm dependencies and PM2, start app
+print_info "Installing dependencies and starting app with PM2..."
+az vm run-command invoke \
+    --resource-group "$RG_SPOKE_PRIMARY" \
+    --name "$VM_PRIMARY" \
+    --command-id RunShellScript \
+    --scripts 'cd /var/www/social-media && npm install && npm install -g pm2 && pm2 delete all 2>/dev/null; pm2 start app.js --name social-media && pm2 startup systemd -u root --hp /root && pm2 save && pm2 list' \
+    --query "value[0].message" -o tsv
+
+# Step 4: Configure nginx as reverse proxy (using base64 to avoid shell escaping issues)
+print_info "Configuring nginx reverse proxy..."
+NGINX_CONFIG='c2VydmVyIHsKICAgIGxpc3RlbiA4MCBkZWZhdWx0X3NlcnZlcjsKICAgIGxpc3RlbiBbOjpdOjgwIGRlZmF1bHRfc2VydmVyOwogICAgCiAgICBsb2NhdGlvbiAvIHsKICAgICAgICBwcm94eV9wYXNzIGh0dHA6Ly8xMjcuMC4wLjE6MzAwMDsKICAgICAgICBwcm94eV9odHRwX3ZlcnNpb24gMS4xOwogICAgICAgIHByb3h5X3NldF9oZWFkZXIgSG9zdCAkaG9zdDsKICAgICAgICBwcm94eV9zZXRfaGVhZGVyIFgtUmVhbC1JUCAkcmVtb3RlX2FkZHI7CiAgICB9Cn0K'
+az vm run-command invoke \
+    --resource-group "$RG_SPOKE_PRIMARY" \
+    --name "$VM_PRIMARY" \
+    --command-id RunShellScript \
+    --scripts "echo '$NGINX_CONFIG' | base64 -d > /etc/nginx/sites-available/default && nginx -t && systemctl restart nginx && echo 'Nginx configured as reverse proxy!'" \
+    --query "value[0].message" -o tsv
 
 print_success "Deployed to Southeast Asia VM"
 
@@ -149,8 +162,17 @@ print_success "Deployed to Southeast Asia VM"
 
 print_header "Deploying to Secondary VM (Indonesia Central)"
 
-print_step "Deploying application via Azure CLI run-command..."
+# Step 1: Ensure Node.js and nginx are installed
+print_info "Ensuring Node.js 18 and nginx are installed..."
+az vm run-command invoke \
+    --resource-group "$RG_SPOKE_SECONDARY" \
+    --name "$VM_SECONDARY" \
+    --command-id RunShellScript \
+    --scripts 'curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && apt-get install -y nodejs nginx && node -v && npm -v' \
+    --query "value[0].message" -o tsv
 
+# Step 2: Deploy application files
+print_info "Deploying application files..."
 az vm run-command invoke \
     --resource-group "$RG_SPOKE_SECONDARY" \
     --name "$VM_SECONDARY" \
@@ -176,11 +198,13 @@ $INDEX_EJS
 INDEXEJS
 
 # Create .env file
+# NOTE: IDC VM connects to its LOCAL SQL server (secondary replica) via Private Endpoint
+# This is required because there's no VNet peering between regions
 cat > .env << ENVFILE
 PORT=3000
 REGION=Indonesia Central
 REGION_COLOR=#007bff
-SQL_SERVER=$SQL_LISTENER
+SQL_SERVER=${SQL_SERVER_SECONDARY}.database.windows.net
 SQL_DATABASE=$SQL_DATABASE
 SQL_USER=$SQL_ADMIN_USER
 SQL_PASSWORD=$SQL_ADMIN_PASSWORD
@@ -190,27 +214,28 @@ ENVFILE
 
 # Set permissions
 chown -R azureuser:azureuser /var/www/social-media
-
-# Install dependencies
-cd /var/www/social-media
-npm install
-
-# Start with PM2
-sudo -u azureuser bash -c 'cd /var/www/social-media && pm2 delete all 2>/dev/null || true'
-sudo -u azureuser bash -c 'cd /var/www/social-media && pm2 start app.js --name social-media'
-sudo -u azureuser bash -c 'pm2 save'
-
-# Configure PM2 to start on boot
-env PATH=\$PATH:/usr/bin pm2 startup systemd -u azureuser --hp /home/azureuser
-sudo -u azureuser pm2 save
-
-# Restart Nginx
-systemctl restart nginx
-
-echo 'Application deployed successfully!'
-echo 'PM2 configured to auto-start on boot!'
+echo 'Application files deployed!'
 " \
-    --output table
+    --query "value[0].message" -o tsv
+
+# Step 3: Install npm dependencies and PM2, start app
+print_info "Installing dependencies and starting app with PM2..."
+az vm run-command invoke \
+    --resource-group "$RG_SPOKE_SECONDARY" \
+    --name "$VM_SECONDARY" \
+    --command-id RunShellScript \
+    --scripts 'cd /var/www/social-media && npm install && npm install -g pm2 && pm2 delete all 2>/dev/null; pm2 start app.js --name social-media && pm2 startup systemd -u root --hp /root && pm2 save && pm2 list' \
+    --query "value[0].message" -o tsv
+
+# Step 4: Configure nginx as reverse proxy (using base64 to avoid shell escaping issues)
+print_info "Configuring nginx reverse proxy..."
+NGINX_CONFIG='c2VydmVyIHsKICAgIGxpc3RlbiA4MCBkZWZhdWx0X3NlcnZlcjsKICAgIGxpc3RlbiBbOjpdOjgwIGRlZmF1bHRfc2VydmVyOwogICAgCiAgICBsb2NhdGlvbiAvIHsKICAgICAgICBwcm94eV9wYXNzIGh0dHA6Ly8xMjcuMC4wLjE6MzAwMDsKICAgICAgICBwcm94eV9odHRwX3ZlcnNpb24gMS4xOwogICAgICAgIHByb3h5X3NldF9oZWFkZXIgSG9zdCAkaG9zdDsKICAgICAgICBwcm94eV9zZXRfaGVhbGVyIFgtUmVhbC1JUCAkcmVtb3RlX2FkZHI7CiAgICB9Cn0K'
+az vm run-command invoke \
+    --resource-group "$RG_SPOKE_SECONDARY" \
+    --name "$VM_SECONDARY" \
+    --command-id RunShellScript \
+    --scripts "echo '$NGINX_CONFIG' | base64 -d > /etc/nginx/sites-available/default && nginx -t && systemctl restart nginx && echo 'Nginx configured as reverse proxy!'" \
+    --query "value[0].message" -o tsv
 
 print_success "Deployed to Indonesia Central VM"
 
@@ -221,27 +246,27 @@ print_success "Deployed to Indonesia Central VM"
 print_header "Verifying Deployments"
 
 print_step "Testing Primary VM via Firewall (Southeast Asia)..."
-sleep 10  # Wait for app to start
+sleep 5  # Wait for app to stabilize
 
-if curl -s --connect-timeout 15 "http://$FW_PUBLIC_IP_PRIMARY/health" | grep -q "healthy"; then
+if curl -s --connect-timeout 30 "http://$FW_PUBLIC_IP_PRIMARY/health" | grep -q "healthy"; then
     print_success "Primary VM is healthy (via Firewall)"
 else
-    print_warning "Primary VM health check pending (may need more time for cloud-init)"
+    print_warning "Primary VM health check failed - check VM logs"
 fi
 
 print_step "Testing Secondary VM via Firewall (Indonesia Central)..."
-if curl -s --connect-timeout 15 "http://$FW_PUBLIC_IP_SECONDARY/health" | grep -q "healthy"; then
+if curl -s --connect-timeout 30 "http://$FW_PUBLIC_IP_SECONDARY/health" | grep -q "healthy"; then
     print_success "Secondary VM is healthy (via Firewall)"
 else
-    print_warning "Secondary VM health check pending (may need more time for cloud-init)"
+    print_warning "Secondary VM health check failed - check VM logs"
 fi
 
 print_step "Testing Front Door..."
-sleep 5
+print_info "Note: Front Door may take 10-15 minutes to propagate globally"
 if curl -s --connect-timeout 30 "http://$FRONTDOOR_URL/health" | grep -q "healthy"; then
     print_success "Front Door is routing correctly"
 else
-    print_warning "Front Door may need 2-3 minutes to propagate"
+    print_warning "Front Door not ready yet - check again in a few minutes"
 fi
 
 # =============================================================================
@@ -279,11 +304,11 @@ echo "  az vm start --resource-group $RG_SPOKE_PRIMARY --name $VM_PRIMARY --no-w
 echo ""
 echo "Stop app only (faster failover demo):"
 echo "  az vm run-command invoke -g $RG_SPOKE_PRIMARY -n $VM_PRIMARY \\"
-echo "    --command-id RunShellScript --scripts 'sudo -u azureuser pm2 stop all'"
+echo "    --command-id RunShellScript --scripts 'pm2 stop all'"
 echo ""
 echo "Start app:"
 echo "  az vm run-command invoke -g $RG_SPOKE_PRIMARY -n $VM_PRIMARY \\"
-echo "    --command-id RunShellScript --scripts 'sudo -u azureuser pm2 start all'"
+echo "    --command-id RunShellScript --scripts 'pm2 start all'"
 echo ""
 echo "============================================================================="
 

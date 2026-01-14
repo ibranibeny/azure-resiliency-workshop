@@ -1003,7 +1003,7 @@ az network firewall policy rule-collection-group collection add-nat-collection \
     --policy-name "$FW_POLICY_PRIMARY" \
     --resource-group "$RG_HUB_PRIMARY" \
     --rule-collection-group-name "dnat-rules" \
-    --priority 100 \
+    --collection-priority 100 \
     --action DNAT \
     --rule-name "allow-http" \
     --source-addresses "*" \
@@ -1031,7 +1031,7 @@ az network firewall policy rule-collection-group collection add-nat-collection \
     --policy-name "$FW_POLICY_SECONDARY" \
     --resource-group "$RG_HUB_SECONDARY" \
     --rule-collection-group-name "dnat-rules" \
-    --priority 100 \
+    --collection-priority 100 \
     --action DNAT \
     --rule-name "allow-http" \
     --source-addresses "*" \
@@ -1062,12 +1062,26 @@ az network firewall policy rule-collection-group collection add-filter-collectio
     --rule-collection-group-name "network-rules" \
     --collection-priority 100 \
     --action Allow \
-    --rule-name "allow-all-outbound" \
+    --rule-name "allow-all-tcp-outbound" \
     --rule-type NetworkRule \
     --source-addresses "10.1.0.0/16" \
     --destination-addresses "*" \
-    --destination-ports "*" \
-    --ip-protocols Any \
+    --destination-ports "1-65535" \
+    --ip-protocols TCP \
+    --output none
+
+# Add UDP outbound rule for DNS/NTP
+az network firewall policy rule-collection-group collection rule add \
+    --name "allow-all-udp-outbound" \
+    --policy-name "$FW_POLICY_PRIMARY" \
+    --resource-group "$RG_HUB_PRIMARY" \
+    --rule-collection-group-name "network-rules" \
+    --collection-name "allow-outbound" \
+    --rule-type NetworkRule \
+    --source-addresses "10.1.0.0/16" \
+    --destination-addresses "*" \
+    --destination-ports "1-65535" \
+    --ip-protocols UDP \
     --output none
 
 # Add specific SQL outbound rules (port 1433 + redirect ports 11000-11999)
@@ -1116,12 +1130,26 @@ az network firewall policy rule-collection-group collection add-filter-collectio
     --rule-collection-group-name "network-rules" \
     --collection-priority 100 \
     --action Allow \
-    --rule-name "allow-all-outbound" \
+    --rule-name "allow-all-tcp-outbound" \
     --rule-type NetworkRule \
     --source-addresses "10.2.0.0/16" \
     --destination-addresses "*" \
-    --destination-ports "*" \
-    --ip-protocols Any \
+    --destination-ports "1-65535" \
+    --ip-protocols TCP \
+    --output none
+
+# Add UDP outbound rule for DNS/NTP
+az network firewall policy rule-collection-group collection rule add \
+    --name "allow-all-udp-outbound" \
+    --policy-name "$FW_POLICY_SECONDARY" \
+    --resource-group "$RG_HUB_SECONDARY" \
+    --rule-collection-group-name "network-rules" \
+    --collection-name "allow-outbound" \
+    --rule-type NetworkRule \
+    --source-addresses "10.2.0.0/16" \
+    --destination-addresses "*" \
+    --destination-ports "1-65535" \
+    --ip-protocols UDP \
     --output none
 
 # Add SQL outbound rules for IDC firewall
@@ -1346,7 +1374,7 @@ SQL_LISTENER=$SQL_LISTENER
 SQL_DATABASE=$SQL_DATABASE
 SQL_ADMIN_USER=$SQL_ADMIN_USER
 SQL_ADMIN_PASSWORD=$SQL_ADMIN_PASSWORD
-SQL_ACCESS_MODE=Private Endpoints (public access disabled)
+SQL_ACCESS_MODE="Private Endpoints (public access disabled)"
 PE_IP_PRIMARY=$PE_IP_PRIMARY
 PE_IP_SECONDARY=$PE_IP_SECONDARY
 
@@ -1362,28 +1390,28 @@ FRONTDOOR_NAME=$FRONTDOOR_NAME
 FRONTDOOR_URL=$FRONTDOOR_URL
 
 ## Quick Commands
-
+#
 # Access Application via Front Door:
-curl http://$FRONTDOOR_URL
-
+# curl http://$FRONTDOOR_URL
+#
 # Access Primary VM via Firewall Public IP:
-curl http://$FW_PUBLIC_IP_PRIMARY
-
+# curl http://$FW_PUBLIC_IP_PRIMARY
+#
 # Access Secondary VM via Firewall Public IP:
-curl http://$FW_PUBLIC_IP_SECONDARY
-
+# curl http://$FW_PUBLIC_IP_SECONDARY
+#
 # Stop Primary VM (for failover demo):
-az vm stop --resource-group $RG_SPOKE_PRIMARY --name $VM_PRIMARY --no-wait
-
+# az vm stop --resource-group $RG_SPOKE_PRIMARY --name $VM_PRIMARY --no-wait
+#
 # Start Primary VM:
-az vm start --resource-group $RG_SPOKE_PRIMARY --name $VM_PRIMARY --no-wait
-
+# az vm start --resource-group $RG_SPOKE_PRIMARY --name $VM_PRIMARY --no-wait
+#
 # Stop Secondary VM:
-az vm stop --resource-group $RG_SPOKE_SECONDARY --name $VM_SECONDARY --no-wait
-
+# az vm stop --resource-group $RG_SPOKE_SECONDARY --name $VM_SECONDARY --no-wait
+#
 # Start Secondary VM:
-az vm start --resource-group $RG_SPOKE_SECONDARY --name $VM_SECONDARY --no-wait
-
+# az vm start --resource-group $RG_SPOKE_SECONDARY --name $VM_SECONDARY --no-wait
+#
 # Note: VMs have no public IPs. SSH requires Azure Bastion or VPN connection to Hub VNet.
 EOF
 
