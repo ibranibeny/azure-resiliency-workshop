@@ -78,7 +78,7 @@ print_success "Application files loaded"
 print_header "Deploying to Primary VM (Southeast Asia)"
 
 print_step "Deploying application via Azure CLI run-command..."
-print_info "This uses Azure fabric to execute commands on VMs without public IP"
+print_info "This uses Azure VM RUN Command to execute commands on VMs without public IP"
 
 # Step 1: Ensure Node.js and nginx are installed
 print_info "Ensuring Node.js 18 and nginx are installed..."
