@@ -2,7 +2,7 @@
 
 A hands-on workshop demonstrating multi-region resiliency patterns using Azure services with a Hub-Spoke network topology.
 
-## 🎯 Purpose
+## Purpose
 
 This workshop provides a practical demonstration of building resilient, multi-region applications on Azure. Participants will deploy a complete infrastructure that showcases:
 
@@ -11,7 +11,7 @@ This workshop provides a practical demonstration of building resilient, multi-re
 - **Network Security** - Enterprise-grade security with Azure Firewall and Private Endpoints
 - **Global Load Balancing** - Seamless traffic distribution with Azure Front Door
 
-## 📋 Scenario
+## Scenario
 
 ### Business Context
 
@@ -44,11 +44,11 @@ Deploy a Node.js application across two Azure regions (Southeast Asia and Indone
 - Secure private connectivity to Azure SQL Database
 - Centralized traffic management through Azure Firewall
 
-## 🏗️ Architecture
+## Architecture
 
 ![Azure Resiliency Workshop Architecture](architecture-workshop.jpg)
 
-## 🧩 Components
+## Components
 
 ### Network Layer
 
@@ -84,7 +84,7 @@ Deploy a Node.js application across two Azure regions (Southeast Asia and Indone
 | **Failover Group** | Geo-replication & failover | Automatic failover, 60-min grace |
 | **Database** | Application data | `resiliency-db` |
 
-## 🎯 Goals and Objectives
+## Goals and Objectives
 
 ### Learning Objectives
 
@@ -117,15 +117,15 @@ By completing this workshop, participants will be able to:
 
 ### Success Criteria
 
-✅ Deploy complete infrastructure across 5 resource groups  
-✅ VMs accessible only through Azure Firewall (no public IPs)  
-✅ SQL connectivity via Private Endpoints (public access disabled)  
-✅ Application loads via Azure Front Door URL  
-✅ Data replicates between regions in < 5 seconds  
-✅ Automatic failover when primary region fails  
-✅ Traffic returns to primary when restored  
+- Deploy complete infrastructure across 5 resource groups  
+- VMs accessible only through Azure Firewall (no public IPs)  
+- SQL connectivity via Private Endpoints (public access disabled)  
+- Application loads via Azure Front Door URL  
+- Data replicates between regions in < 5 seconds  
+- Automatic failover when primary region fails  
+- Traffic returns to primary when restored  
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 Resiliency/
@@ -145,7 +145,7 @@ Resiliency/
     └── 04-cleanup.sh
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -177,7 +177,7 @@ chmod +x *.sh
 ./04-cleanup.sh
 ```
 
-## 💰 Estimated Costs
+## Estimated Costs
 
 | Resource | SKU | Est. Cost/Hour |
 |----------|-----|----------------|
@@ -188,9 +188,9 @@ chmod +x *.sh
 | Networking | - | ~$0.05 |
 | **Total** | | **~$0.75/hr** |
 
-⚠️ **Important:** Delete all resources after the workshop to avoid ongoing charges!
+**Important:** Delete all resources after the workshop to avoid ongoing charges!
 
-## 📚 Additional Resources
+## Additional Resources
 
 - [Azure Well-Architected Framework - Reliability](https://learn.microsoft.com/azure/well-architected/reliability/)
 - [Azure SQL Failover Groups](https://learn.microsoft.com/azure/azure-sql/database/failover-group-overview)
@@ -198,11 +198,11 @@ chmod +x *.sh
 - [Azure Private Endpoints](https://learn.microsoft.com/azure/private-link/private-endpoint-overview)
 - [Azure Front Door](https://learn.microsoft.com/azure/frontdoor/front-door-overview)
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please submit issues or pull requests for improvements.
 
-## 📝 License
+## License
 
 This workshop is provided for educational purposes.
 
