@@ -1213,6 +1213,7 @@ az afd endpoint create \
 print_success "Created Front Door endpoint"
 
 # Create origin group with health probe
+# Using faster probe interval (10 seconds) for quicker failover detection
 print_step "Creating origin group with health probe..."
 az afd origin-group create \
     --origin-group-name "og-frontend" \
@@ -1221,9 +1222,9 @@ az afd origin-group create \
     --probe-path "/health" \
     --probe-protocol Http \
     --probe-request-type GET \
-    --probe-interval-in-seconds 30 \
+    --probe-interval-in-seconds 10 \
     --sample-size 4 \
-    --successful-samples-required 3 \
+    --successful-samples-required 2 \
     --additional-latency-in-milliseconds 50 \
     --output none
 
